@@ -77,7 +77,11 @@ class MLPPlanner(nn.Module):
         Returns:
             torch.Tensor: future waypoints with shape (b, n_waypoints, 2)
         """
-        raise NotImplementedError
+        ## option 1: add them up and average
+        x = (track_left + track_right) / 2.0
+        x = torch.flatten(x, 1, 2)
+
+        return self.network(x)
 
 
 class TransformerPlanner(nn.Module):
