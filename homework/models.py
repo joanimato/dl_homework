@@ -10,15 +10,17 @@ INPUT_STD = [0.2064, 0.1944, 0.2252]
 
 class MLPPlanner(nn.Module):
     class Block(nn.Module):
-        def __init__ (self, input, hidden):
+        def __init__ (self, input, hidden, dropout_prob=0.2):
             super().__init__()
             self.model = nn.Sequential(
                 nn.Linear(input, hidden),
                 nn.LayerNorm(hidden),
-                nn.ReLU(), 
+                nn.ReLU(),
+                nn.Dropout(dropout_prob),
                 nn.Linear(hidden, hidden),
-                nn.LayerNorm(hidden), 
-                nn.ReLU()
+                nn.LayerNorm(hidden),
+                nn.ReLU(),
+                nn.Dropout(dropout_prob)
             )
 
             if input != hidden:
@@ -47,7 +49,7 @@ class MLPPlanner(nn.Module):
         self.n_track = n_track
         self.n_waypoints = n_waypoints
 
-        input_size = n_track * 2
+        input_size = n_track * 2 * 2 ## tracks are concatenate
         output_size = n_waypoints * 2
         # initial layers
         layers = [nn.Linear(input_size, hidden_dim), nn.ReLU()]
@@ -78,10 +80,13 @@ class MLPPlanner(nn.Module):
             torch.Tensor: future waypoints with shape (b, n_waypoints, 2)
         """
         ## option 1: add them up and average
-        x = (track_left + track_right) / 2.0
+        # x = (track_left + track_right) / 2.0
+        ## option 2: concatenate tracks
+        x = torch.cat((track_left, track_right), dim=1)
+
         x = torch.flatten(x, 1, 2)
 
-        return self.network(x)
+        return self.network(x).view(-1,3,2)
 
 
 class TransformerPlanner(nn.Module):
