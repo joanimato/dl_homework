@@ -9,10 +9,33 @@ INPUT_STD = [0.2064, 0.1944, 0.2252]
 
 
 class MLPPlanner(nn.Module):
+    class Block(nn.Module):
+        def __init__ (self, input, hidden):
+            super().__init__()
+            self.model = nn.Sequential(
+                nn.Linear(input, hidden),
+                nn.LayerNorm(hidden),
+                nn.ReLU(), 
+                nn.Linear(hidden, hidden),
+                nn.LayerNorm(hidden), 
+                nn.ReLU()
+            )
+
+            if input != hidden:
+                self.skip = nn.Linear(input, hidden)
+            else:
+                self.skip = nn.Identity()
+        
+        def forward(self, x):
+            return self.skip(x) + self.model(x)
+
+
     def __init__(
         self,
         n_track: int = 10,
         n_waypoints: int = 3,
+        hidden_dim: int = 80, 
+        num_layers: int = 3
     ):
         """
         Args:
@@ -23,6 +46,17 @@ class MLPPlanner(nn.Module):
 
         self.n_track = n_track
         self.n_waypoints = n_waypoints
+
+        input_size = n_track * 2
+        output_size = n_waypoints * 2
+        # initial layers
+        layers = [nn.Linear(input_size, hidden_dim), nn.ReLU()]
+        
+        for i in range(num_layers):
+            layers.append(self.Block(hidden_dim, hidden_dim))
+        
+        layers.append(nn.Linear(hidden_dim, output_size))
+        self.network = nn.Sequential(*layers)
 
     def forward(
         self,
