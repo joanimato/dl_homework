@@ -5,6 +5,9 @@ Usage:
 
 from datetime import datetime
 from pathlib import Path
+import argparse
+import warnings
+warnings.filterwarnings("ignore")
 
 import numpy as np
 import torch
@@ -12,11 +15,12 @@ import torch.utils.tensorboard as tb
 
 from .models import MLPPlanner, load_model, save_model
 from .datasets.road_dataset import load_data
+from .metrics import PlannerMetric
 
 
 def train(
     exp_dir: str = "logs",
-    model_name: str = "linear",
+    model_name: str = "mlp_planner",
     num_epoch: int = 100,
     lr: float = 1e-3,
     batch_size: int = 64,
@@ -44,8 +48,8 @@ def train(
     model = model.to(device)
     model.train()
 
-    train_data = load_data("classification_data/train", shuffle=True, batch_size=batch_size, num_workers=2)
-    val_data = load_data("classification_data/val", shuffle=False)
+    train_data = load_data("drive_data/train", shuffle=True, batch_size=batch_size, num_workers=2)
+    val_data = load_data("drive_data/val", shuffle=False)
 
     # create loss function and optimizer
     loss_func = torch.nn.MSELoss()
@@ -53,71 +57,85 @@ def train(
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
 
     global_step = 0
-    metrics = {"train_acc": [], "val_acc": []}
+    # metrics = {"train_acc": [], "val_acc": []}
+    train_accuracy = PlannerMetric()
+    val_accuracy = PlannerMetric()
+    
+    # metrics = {"train_acc": [], "val_acc": []}
 
     # training loop
     for epoch in range(num_epoch):
-        # clear metrics at beginning of epoch
-        for key in metrics:
-            metrics[key].clear()
+
+        train_accuracy.reset()
+        val_accuracy.reset()
 
         model.train()
 
-        correct_train = 0
-        total_train = 0
-        correct_val = 0
-        total_val =0
+        running_loss = 0.0
 
-        for img, label in train_data:
-            img, label = img.to(device), label.to(device)
+        for datum in train_data:
+            # 'track_left', 'track_right', 'waypoints', 'waypoints_mask'
+            track_left = datum['track_left'].to(device)
+            track_right = datum['track_right'].to(device)
+            waypoints = datum['waypoints'].to(device)
+            waypoints_mask = datum['waypoints_mask'].to(device)
 
-            # TODO: implement training step
             optimizer.zero_grad()
-            train_pred = model(img)
 
-            train_loss = loss_func(train_pred, label)
+            pred = model(track_left, track_right)
+            pred = pred.view(-1,3,2)
+            train_loss = loss_func(pred, waypoints)
+
+            train_accuracy.add(pred, waypoints, waypoints_mask)
+            
             train_loss.backward()
             optimizer.step()
 
-            # accuracy
-            preds = train_pred.argmax(dim=1)               # (B,)
-            correct_train += (preds == label).sum().item()
-            total_train += label.size(0)
+            running_loss += train_loss.item()
 
             global_step += 1
-
-        metrics["train_acc"].append(correct_train / total_train)
 
         # disable gradient computation and switch to evaluation mode
         with torch.inference_mode():
             model.eval()
 
-            for img, label in val_data:
-                img, label = img.to(device), label.to(device)
+            for datum in val_data:
+                # 'track_left', 'track_right', 'waypoints', 'waypoints_mask'
+                track_left = datum['track_left'].to(device)
+                track_right = datum['track_right'].to(device)
+                waypoints = datum['waypoints'].to(device)
+                waypoints_mask = datum['waypoints_mask'].to(device)
 
-                # TODO: compute validation accuracy
-                val_outputs = model(img)
-                val_pred = val_outputs.argmax(dim=1)
-
-                correct_val += (val_pred == label).sum().item()
-
-                total_val += label.size(0) 
-
-        metrics["val_acc"].append(correct_val / total_val)
+                pred = model(track_left, track_right)
+                pred = pred.view(-1,3,2)
+            
+                # ADD metric
+                val_accuracy.add(pred, waypoints, waypoints_mask)
 
         # log average train and val accuracy to tensorboard
-        epoch_train_acc = torch.as_tensor(metrics["train_acc"]).mean()
-        epoch_val_acc = torch.as_tensor(metrics["val_acc"]).mean()
+        train_acc = train_accuracy.compute()
+        val_acc = val_accuracy.compute()
 
-        logger.add_scalar("train_accuracy", epoch_train_acc, global_step)
-        logger.add_scalar("val_accuracy", epoch_val_acc, global_step)
+            # "l1_error": float(l1_error),
+            # "longitudinal_error": float(longitudinal_error),
+            # "lateral_error": float(lateral_error),
+            # "num_samples": self.total,
+        logger.add_scalar("train l1_error", train_acc["l1_error"], global_step)
+        logger.add_scalar("train longitudinal_error", train_acc["longitudinal_error"], global_step)
+        logger.add_scalar("train lateral_error", train_acc["lateral_error"], global_step)
+        logger.add_scalar("val l1_error", val_acc["l1_error"], global_step)
+        logger.add_scalar("val longitudinal_error", val_acc["longitudinal_error"], global_step)
+        logger.add_scalar("val lateral_error", val_acc["lateral_error"], global_step)
+
+        epoch_loss = running_loss / batch_size
 
         # print on first, last, every 10th epoch
-        if epoch == 0 or epoch == num_epoch - 1 or (epoch + 1) % 10 == 0:
+        if epoch == 0 or epoch == num_epoch - 1 or (epoch + 1) % 5 == 0:
             print(
                 f"Epoch {epoch + 1:2d} / {num_epoch:2d}: "
-                f"train_acc={epoch_train_acc:.4f} "
-                f"val_acc={epoch_val_acc:.4f}"
+                f"Epoch Loss={epoch_loss:.4f} "
+                f"train_l1={train_acc['l1_error']:.4f} "
+                f"val_l1={val_acc['l1_error']:.4f}"
             )
 
     # save and overwrite the model in the root directory for grading
@@ -126,3 +144,20 @@ def train(
     # save a copy of model weights in the log directory
     torch.save(model.state_dict(), log_dir / f"{model_name}.th")
     print(f"Model saved to {log_dir / f'{model_name}.th'}")
+
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("--exp_dir", type=str, default="logs")
+    parser.add_argument("--model_name", type=str, required=True)
+    parser.add_argument("--num_epoch", type=int, default=50)
+    parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--seed", type=int, default=2024)
+
+    # optional: additional model hyperparamters
+    # parser.add_argument("--num_layers", type=int, default=3)
+
+    # pass all arguments to train
+    train(**vars(parser.parse_args()))
