@@ -52,9 +52,10 @@ def train(
     val_data = load_data("drive_data/val", shuffle=False)
 
     # create loss function and optimizer
+    #Use SGD and L1
     loss_func = torch.nn.MSELoss()
     # optimizer = ...
-    optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
 
     global_step = 0
     # metrics = {"train_acc": [], "val_acc": []}
@@ -120,12 +121,12 @@ def train(
             # "longitudinal_error": float(longitudinal_error),
             # "lateral_error": float(lateral_error),
             # "num_samples": self.total,
-        logger.add_scalar("train l1_error", train_acc["l1_error"], global_step)
-        logger.add_scalar("train longitudinal_error", train_acc["longitudinal_error"], global_step)
-        logger.add_scalar("train lateral_error", train_acc["lateral_error"], global_step)
-        logger.add_scalar("val l1_error", val_acc["l1_error"], global_step)
-        logger.add_scalar("val longitudinal_error", val_acc["longitudinal_error"], global_step)
-        logger.add_scalar("val lateral_error", val_acc["lateral_error"], global_step)
+        logger.add_scalar("train l1_error", train_acc["l1_error"], epoch)
+        logger.add_scalar("train longitudinal_error", train_acc["longitudinal_error"], epoch)
+        logger.add_scalar("train lateral_error", train_acc["lateral_error"], epoch)
+        logger.add_scalar("val l1_error", val_acc["l1_error"], epoch)
+        logger.add_scalar("val longitudinal_error", val_acc["longitudinal_error"], epoch)
+        logger.add_scalar("val lateral_error", val_acc["lateral_error"], epoch)
 
         epoch_loss = running_loss / batch_size
 
@@ -135,7 +136,8 @@ def train(
                 f"Epoch {epoch + 1:2d} / {num_epoch:2d}: "
                 f"Epoch Loss={epoch_loss:.4f} "
                 f"train_l1={train_acc['l1_error']:.4f} "
-                f"val_l1={val_acc['l1_error']:.4f}"
+                f"val_long_error={val_acc['longitudinal_error']} "
+                f"val_lat_error={val_acc['lateral_error']} "
             )
 
     # save and overwrite the model in the root directory for grading

@@ -15,8 +15,23 @@ import cv2
 import numpy as np
 from PIL import Image
 from torchvision import transforms as tv_transforms
+import torch
 
 from .road_utils import Track, homogeneous
+
+
+def apply_random_lateral_shift(track, max_shift=0.2):
+    """
+    Apply the same random lateral shift to both left and right boundaries.
+    """
+    B = track.shape[0]
+    # Sample B random shifts in [-max_shift, max_shift]
+    shift_values = torch.empty(B).uniform_(-max_shift, max_shift).to(track.device)  # (B,)
+
+    # Expand to (B, 1, 2): assume lateral shift is along x (index 0)
+    shift_vectors = torch.stack((shift_values, torch.zeros_like(shift_values)), dim=1).unsqueeze(1)
+
+    return track + shift_vectors,
 
 
 def project(points, view, proj, h, w):
@@ -158,6 +173,29 @@ class RandomHorizontalFlip(tv_transforms.RandomHorizontalFlip):
 
         return sample
 
+class LateralShifts(tv_transforms.RandomHorizontalFlip):
+    def __call__(self, sample: dict):
+        print("jani debug lateral shifts")
+        print(sample['track_left'])
+        if np.random.rand() < self.p:
+            sample["track_left"] = apply_random_lateral_shift(sample["track_left"], max_shift=0.2)
+            sample["track_right"] = apply_random_lateral_shift(sample["track_right"], max_shift=0.2)
+
+def apply_random_noise(track_left, track_right, noise_std=0.01):
+    """
+    Adds Gaussian noise to track points.
+    """
+    noise_left = torch.randn_like(torch.tensor(track_left)) * noise_std
+    noise_right = torch.randn_like(torch.tensor(track_right)) * noise_std
+    return torch.tensor(track_left) + noise_left, torch.tensor(track_right) + noise_right
+
+class Jitter(tv_transforms.RandomHorizontalFlip):
+    def __call__(self, sample: dict):
+        if np.random.rand() < self.p:
+            sample['track_left'], sample['track_right'] = apply_random_noise(sample['track_left'], sample['track_right'])
+
+        return sample
+    
 
 class TrackProcessor:
     """

@@ -18,9 +18,6 @@ class MLPPlanner(nn.Module):
                 nn.ReLU(),
                 nn.Dropout(dropout_prob),
                 nn.Linear(hidden, hidden),
-                nn.LayerNorm(hidden),
-                nn.ReLU(),
-                nn.Dropout(dropout_prob)
             )
 
             if input != hidden:
@@ -52,7 +49,7 @@ class MLPPlanner(nn.Module):
         input_size = n_track * 2 * 2 ## tracks are concatenate
         output_size = n_waypoints * 2
         # initial layers
-        layers = [nn.Linear(input_size, hidden_dim), nn.ReLU()]
+        layers = [nn.Linear(input_size, hidden_dim), nn.LayerNorm(hidden_dim), nn.ReLU()]
         
         for i in range(num_layers):
             layers.append(self.Block(hidden_dim, hidden_dim))
