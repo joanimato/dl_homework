@@ -85,20 +85,51 @@ class MLPPlanner(nn.Module):
 
         return self.network(x).view(-1,3,2)
 
+class TransformerLayer(torch.nn.Module):
+    def __init__(self, embed_dim, num_heads):
+        super().__init__()
 
+        self.self_att = torch.nn.MultiheadAttention(embed_dim, num_heads, batch_first=True)
+        self.mlp = torch.nn.Sequential(
+            torch.nn.Linear(embed_dim, 4 * embed_dim), torch.nn.ReLU(), torch.nn.Linear(4 * embed_dim, embed_dim)
+        )
+        self.in_norm = torch.nn.LayerNorm(embed_dim)
+        self.mlp_norm = torch.nn.LayerNorm(embed_dim)
+
+    def forward(self, x):
+        x_norm = self.in_norm(x)
+        x = x + self.self_att(x_norm, x_norm, x_norm)[0]
+        x = x + self.mlp(self.mlp_norm(x))
+        return x
+    
 class TransformerPlanner(nn.Module):
     def __init__(
-        self,
+        self, 
+        num_heads = 4,
+        num_layers = 3,
         n_track: int = 10,
         n_waypoints: int = 3,
         d_model: int = 64,
+        nhead: int = 4
     ):
         super().__init__()
-
-        self.n_track = n_track
+ 
+        self.n_track = n_track * 2 * 2 # x,y -- left and right concant
         self.n_waypoints = n_waypoints
 
         self.query_embed = nn.Embedding(n_waypoints, d_model)
+        self.input_proj = nn.Linear(2, d_model)
+
+        # Transformer decoder: queries attend to track points
+        decoder_layer = nn.TransformerDecoderLayer(d_model=d_model, nhead=nhead, 
+                                                   #dim_feedforward=ff_dim, 
+                                                   batch_first=True
+                                                   )
+        self.decoder = nn.TransformerDecoder(decoder_layer, num_layers=num_layers)
+
+        # Final MLP to predict 2D coordinates for each waypoint
+        self.output_proj = nn.Linear(d_model, 2)
+        
 
     def forward(
         self,
@@ -119,7 +150,23 @@ class TransformerPlanner(nn.Module):
         Returns:
             torch.Tensor: future waypoints with shape (b, n_waypoints, 2)
         """
-        raise NotImplementedError
+        x = torch.cat([track_left, track_right], dim=1)
+        x = self.input_proj(x)  # (B, 20, d_model)
+
+        B = x.size(0)
+        print("B = ", B)
+        device = x.device
+
+        # Create queries from embedding
+        query_indices = torch.arange(self.n_waypoints, device=device)
+        tgt = self.query_embed(query_indices)            # (n_waypoints, d_model)
+        tgt = tgt.unsqueeze(0).expand(B, -1, -1)          # (B, n_waypoints, d_model)
+
+        # Transformer decoder: tgt attends to x
+        decoded = self.decoder(tgt=tgt, memory=x)         # (B, n_waypoints, d_model)
+
+        # Project to (B, n_waypoints, 2)
+        return self.output_proj(decoded)
 
 
 class CNNPlanner(torch.nn.Module):
@@ -185,7 +232,7 @@ def load_model(
     return m
 
 
-def save_model(model: torch.nn.Module) -> str:
+def save_model(model: torch.nn.Module):
     """
     Use this function to save your model in train.py
     """

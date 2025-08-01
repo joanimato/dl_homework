@@ -185,6 +185,7 @@ def apply_random_noise(track_left, track_right, noise_std=0.01):
     """
     Adds Gaussian noise to track points.
     """
+    print("jani debug")
     noise_left = torch.randn_like(torch.tensor(track_left)) * noise_std
     noise_right = torch.randn_like(torch.tensor(track_right)) * noise_std
     return torch.tensor(track_left) + noise_left, torch.tensor(track_right) + noise_right
