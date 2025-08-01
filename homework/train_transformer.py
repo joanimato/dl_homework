@@ -13,14 +13,14 @@ import numpy as np
 import torch
 import torch.utils.tensorboard as tb
 
-from .models import MLPPlanner, load_model, save_model
+from .models import TransformerPlanner, load_model, save_model
 from .datasets.road_dataset import load_data
 from .metrics import PlannerMetric
 
 
 def train(
     exp_dir: str = "logs",
-    model_name: str = "mlp_planner",
+    model_name: str = "transformer_planner",
     num_epoch: int = 100,
     lr: float = 1e-3,
     batch_size: int = 64,
@@ -84,7 +84,7 @@ def train(
             optimizer.zero_grad()
 
             pred = model(track_left, track_right)
-            pred = pred.view(-1,3,2)
+            # pred = pred.view(-1,3,2)
             train_loss = loss_func(pred, waypoints)
 
             train_accuracy.add(pred, waypoints, waypoints_mask)
@@ -108,7 +108,7 @@ def train(
                 waypoints_mask = datum['waypoints_mask'].to(device)
 
                 pred = model(track_left, track_right)
-                pred = pred.view(-1,3,2)
+                # pred = pred.view(-1,3,2)
             
                 # ADD metric
                 val_accuracy.add(pred, waypoints, waypoints_mask)
