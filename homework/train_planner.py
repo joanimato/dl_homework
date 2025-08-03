@@ -53,9 +53,9 @@ def train(
 
     # create loss function and optimizer
     #Use SGD and L1
-    loss_func = torch.nn.MSELoss()
+    loss_func = torch.nn.L1Loss()
     # optimizer = ...
-    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
+    optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.8)
 
     global_step = 0
     # metrics = {"train_acc": [], "val_acc": []}

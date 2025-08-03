@@ -53,9 +53,10 @@ def train(
 
     # create loss function and optimizer
     #Use SGD and L1
-    loss_func = torch.nn.MSELoss()
+    loss_func = torch.nn.SmoothL1Loss()
     # optimizer = ...
-    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
+    optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9)
+
 
     global_step = 0
     # metrics = {"train_acc": [], "val_acc": []}
@@ -136,8 +137,8 @@ def train(
                 f"Epoch {epoch + 1:2d} / {num_epoch:2d}: "
                 f"Epoch Loss={epoch_loss:.4f} "
                 f"train_l1={train_acc['l1_error']:.4f} "
-                f"val_long_error={val_acc['longitudinal_error']} "
-                f"val_lat_error={val_acc['lateral_error']} "
+                f"val_long_error={val_acc['longitudinal_error']:.4f} "
+                f"val_lat_error={val_acc['lateral_error']:.4f} "
             )
 
     # save and overwrite the model in the root directory for grading
